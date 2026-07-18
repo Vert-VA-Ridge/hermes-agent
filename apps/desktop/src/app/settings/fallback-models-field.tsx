@@ -76,7 +76,7 @@ export function FallbackModelsField({
 
   const modelOptions = useQuery({
     queryKey: ['model-options', 'global'],
-    queryFn: () => getGlobalModelOptions()
+    queryFn: () => getGlobalModelOptions({ explicitOnly: false, includeUnconfigured: true })
   })
 
   const providers = (modelOptions.data?.providers ?? []).filter(provider => provider.slug)

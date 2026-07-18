@@ -409,6 +409,33 @@ describe('ModelSettings', () => {
     // Banner present on load, no switch required.
     expect(await screen.findByText(/still run on/)).toBeTruthy()
   })
+
+  it('confirms an expensive model instead of snapping back to the prior route', async () => {
+    setModelAssignment
+      .mockResolvedValueOnce({
+        ok: false,
+        provider: 'nous',
+        model: 'hermes-4',
+        confirm_required: true,
+        confirm_message: 'This route has a higher usage cost.'
+      })
+      .mockResolvedValueOnce({ ok: true, provider: 'nous', model: 'hermes-4', gateway_tools: [] })
+
+    await renderModelSettings()
+    fireEvent.click(await screen.findByRole('button', { name: 'Apply' }))
+
+    expect(await screen.findByText('This route has a higher usage cost.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Use this model' }))
+
+    await waitFor(() =>
+      expect(setModelAssignment).toHaveBeenLastCalledWith({
+        confirm_expensive_model: true,
+        model: 'hermes-4',
+        provider: 'nous',
+        scope: 'main'
+      })
+    )
+  })
 })
 
 describe('ModelSettings MoA preset editor', () => {
