@@ -2219,6 +2219,19 @@ def update_version_files(semver: str, calver_date: str):
         )
         desktop_pkg.write_text(pkg_text, encoding="utf-8")
 
+    # npm also records each workspace's version in the root lockfile. Keep
+    # that metadata atomic with package.json so installs and packaged builds
+    # cannot reintroduce the previous Desktop version after a release bump.
+    package_lock = REPO_ROOT / "package-lock.json"
+    if package_lock.exists():
+        lock_data = json.loads(package_lock.read_text(encoding="utf-8"))
+        desktop_lock = lock_data.get("packages", {}).get("apps/desktop")
+        if isinstance(desktop_lock, dict):
+            desktop_lock["version"] = semver
+            package_lock.write_text(
+                json.dumps(lock_data, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
 
 def resolve_author(name: str, email: str) -> str:
     """Resolve a git author to a GitHub @mention."""
