@@ -47,11 +47,11 @@ export function ModelVisibilityDialog({
       if (gw && sessionId) {
         return gw.request<ModelOptionsResponse>('model.options', {
           session_id: sessionId,
-          explicit_only: true
+          include_unconfigured: true
         })
       }
 
-      return getGlobalModelOptions()
+      return getGlobalModelOptions({ explicitOnly: false, includeUnconfigured: true })
     },
     enabled: open
   })
