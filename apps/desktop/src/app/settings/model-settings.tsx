@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -218,6 +219,12 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
     ready: task => AUX_TASKS.some(meta => meta.key === task)
   })
 
+  const [expensiveModelConfirmation, setExpensiveModelConfirmation] = useState<null | {
+    message: string
+    model: string
+    provider: string
+  }>(null)
+
   // Every profile-scoped async here captures this and bails before writing back,
   // so a request in flight when the user switches profiles can't paint profile
   // A's models/providers into profile B (or fire onMainModelChanged for A).
@@ -231,7 +238,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
     try {
       const [modelInfo, modelOptions, auxiliaryModels, moaModels] = await Promise.all([
         getGlobalModelInfo(),
-        getGlobalModelOptions(),
+        getGlobalModelOptions({ explicitOnly: false, includeUnconfigured: true }),
         getAuxiliaryModels(),
         getMoaModels().catch(() => null)
       ])
@@ -242,7 +249,6 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
 
       setMainModel({ model: modelInfo.model, provider: modelInfo.provider })
       setProviders(modelOptions.providers || [])
-
       if (replaceSelection) {
         setSelectedProvider(modelInfo.provider)
         setSelectedModel(modelInfo.model)
@@ -250,7 +256,6 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
         setSelectedProvider(prev => prev || modelInfo.provider)
         setSelectedModel(prev => prev || modelInfo.model)
       }
-
       setAuxiliary(auxiliaryModels)
       setMoa(moaModels)
 
@@ -286,6 +291,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
     setSelectedProvider('')
     setSelectedModel('')
     setApiKeyDraft('')
+    setExpensiveModelConfirmation(null)
     void refresh({ replaceSelection: true })
   })
 
@@ -566,7 +572,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
         nextModel = ''
       }
 
-      const options = await getGlobalModelOptions()
+      const options = await getGlobalModelOptions({ explicitOnly: false, includeUnconfigured: true })
 
       if (profileEpoch.current !== epoch) {
         return
@@ -609,39 +615,67 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
     }
   }, [selectedProvider, selectedProviderRow])
 
+  const persistMainModel = useCallback(
+    async (providerSelection: string, modelSelection: string, confirmExpensiveModel = false) => {
+      const epoch = profileEpoch.current
+
+      const result = await setModelAssignment({
+        confirm_expensive_model: confirmExpensiveModel,
+        model: modelSelection,
+        provider: providerSelection,
+        scope: 'main',
+        ...(providers.find(entry => entry.slug === providerSelection)?.api_url
+          ? { base_url: providers.find(entry => entry.slug === providerSelection)?.api_url }
+          : {})
+      })
+
+      if (profileEpoch.current !== epoch) {
+        return false
+      }
+
+      if (result.confirm_required) {
+        setExpensiveModelConfirmation({
+          message: result.confirm_message || 'This model may have a higher usage cost.',
+          model: modelSelection,
+          provider: providerSelection
+        })
+
+        return false
+      }
+
+      if (!result.ok) {
+        throw new Error(result.confirm_message || 'Hermes did not save the selected model.')
+      }
+
+      const provider = result.provider || providerSelection
+      const model = result.model || modelSelection
+      setMainModel({ provider, model })
+      setSwitchStaleAux(result.stale_aux ?? [])
+      setExpensiveModelConfirmation(null)
+      onMainModelChanged?.(provider, model)
+      await refresh()
+
+      return true
+    },
+    [onMainModelChanged, providers, refresh]
+  )
+
   const applyMainModel = useCallback(async () => {
     if (!selectedProvider || !selectedModel) {
       return
     }
 
-    const epoch = profileEpoch.current
     setApplying(true)
     setError('')
 
     try {
-      const result = await setModelAssignment({
-        model: selectedModel,
-        provider: selectedProvider,
-        scope: 'main',
-        ...(selectedProviderRow?.api_url ? { base_url: selectedProviderRow.api_url } : {})
-      })
-
-      if (profileEpoch.current !== epoch) {
-        return
-      }
-
-      const provider = result.provider || selectedProvider
-      const model = result.model || selectedModel
-      setMainModel({ provider, model })
-      setSwitchStaleAux(result.stale_aux ?? [])
-      onMainModelChanged?.(provider, model)
-      await refresh()
+      await persistMainModel(selectedProvider, selectedModel)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setApplying(false)
     }
-  }, [onMainModelChanged, refresh, selectedModel, selectedProvider, selectedProviderRow])
+  }, [persistMainModel, selectedModel, selectedProvider])
 
   // Sibling of the applyMainModel endpoint passthrough (#65254): auxiliary
   // assignments targeting a user-defined provider must carry that provider's
@@ -1275,6 +1309,35 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
           </div>
         </section>
       )}
+      <ConfirmDialog
+        confirmLabel="Use this model"
+        description={expensiveModelConfirmation?.message}
+        onClose={() => setExpensiveModelConfirmation(null)}
+        onConfirm={async () => {
+          const pending = expensiveModelConfirmation
+
+          if (!pending) {
+            return
+          }
+
+          setApplying(true)
+          setError('')
+
+          try {
+            const saved = await persistMainModel(pending.provider, pending.model, true)
+
+            if (!saved) {
+              throw new Error('Hermes did not save the selected model.')
+            }
+          } catch (err) {
+            setError(err instanceof Error ? err.message : String(err))
+          } finally {
+            setApplying(false)
+          }
+        }}
+        open={expensiveModelConfirmation !== null}
+        title="Confirm model cost"
+      />
     </div>
   )
 }

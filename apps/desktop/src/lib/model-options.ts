@@ -35,11 +35,11 @@ export function manualPickRemoved(
 }
 
 interface ModelOptionsRequest {
-  /** When false, include ambient/unconfigured providers (onboarding/setup
-   *  surfaces). Chat pickers default to true so only explicitly configured
-   *  providers are listed (#56974). */
+  /** When true, restrict the list to routes configured in this profile. */
   explicitOnly?: boolean
   gateway?: HermesGateway
+  /** Include setup rows for routes that are not authenticated yet. */
+  includeUnconfigured?: boolean
   refresh?: boolean
   sessionId?: null | string
 }
@@ -51,8 +51,9 @@ export function modelOptionsQueryKey(profile: null | string | undefined, session
 }
 
 export function requestModelOptions({
-  explicitOnly = true,
+  explicitOnly = false,
   gateway,
+  includeUnconfigured = true,
   refresh = false,
   sessionId
 }: ModelOptionsRequest): Promise<ModelOptionsResponse> {
@@ -71,8 +72,12 @@ export function requestModelOptions({
       params.explicit_only = true
     }
 
+    if (includeUnconfigured) {
+      params.include_unconfigured = true
+    }
+
     return gateway.request<ModelOptionsResponse>('model.options', params)
   }
 
-  return getGlobalModelOptions({ explicitOnly, ...(refresh ? { refresh: true } : {}) })
+  return getGlobalModelOptions({ explicitOnly, includeUnconfigured, ...(refresh ? { refresh: true } : {}) })
 }
