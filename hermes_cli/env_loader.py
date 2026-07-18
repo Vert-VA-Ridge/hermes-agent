@@ -6,7 +6,7 @@ import os
 import sys
 from pathlib import Path
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 from utils import atomic_replace, fast_safe_load
 
 
@@ -217,6 +217,86 @@ def _sanitize_env_file_if_needed(path: Path) -> None:
         pass  # best-effort — don't block gateway startup
 
 
+def _custom_provider_key_envs(config_path: Path) -> set[str]:
+    """Return credential env names explicitly referenced by custom routes."""
+    if not config_path.is_file():
+        return set()
+    try:
+        with config_path.open("r", encoding="utf-8") as handle:
+            raw = fast_safe_load(handle) or {}
+    except Exception:
+        return set()
+    if not isinstance(raw, dict):
+        return set()
+
+    entries: list[dict] = []
+    providers = raw.get("providers")
+    if isinstance(providers, dict):
+        entries.extend(entry for entry in providers.values() if isinstance(entry, dict))
+    legacy = raw.get("custom_providers")
+    if isinstance(legacy, list):
+        entries.extend(entry for entry in legacy if isinstance(entry, dict))
+
+    names: set[str] = set()
+    for entry in entries:
+        name = str(entry.get("key_env") or entry.get("api_key_env") or "").strip()
+        if name and name.replace("_", "A").isalnum() and not name[0].isdigit():
+            names.add(name)
+    return names
+
+
+def _load_shared_provider_credentials(home_path: Path, user_env: Path) -> None:
+    """Fill missing model-provider credentials from the global Hermes root.
+
+    Named profiles keep their own config, tools, messaging accounts, and secret
+    overrides. They only inherit LLM provider keys (plus keys explicitly named
+    by a custom provider route) when their own ``.env`` does not define that
+    variable. This mirrors the existing per-provider global OAuth fallback in
+    ``auth.json`` without leaking unrelated tool or channel secrets.
+    """
+    if home_path.parent.name != "profiles":
+        return
+    global_root = home_path.parent.parent
+    global_env = global_root / ".env"
+    if not global_env.is_file():
+        return
+
+    try:
+        from hermes_cli.provider_catalog import provider_catalog
+
+        allowed = {
+            env_var
+            for provider in provider_catalog()
+            for env_var in provider.api_key_env_vars
+            if env_var
+        }
+    except Exception:
+        allowed = set()
+    allowed.update(_custom_provider_key_envs(global_root / "config.yaml"))
+    allowed.update(_custom_provider_key_envs(home_path / "config.yaml"))
+    if not allowed:
+        return
+
+    _sanitize_env_file_if_needed(global_env)
+    try:
+        global_values = dotenv_values(global_env, encoding="utf-8")
+    except UnicodeDecodeError:
+        global_values = dotenv_values(global_env, encoding="latin-1")
+    try:
+        local_values = dotenv_values(user_env, encoding="utf-8") if user_env.is_file() else {}
+    except UnicodeDecodeError:
+        local_values = dotenv_values(user_env, encoding="latin-1")
+
+    for key in allowed:
+        # Presence — including an explicit blank — is a profile override.
+        if key in local_values:
+            continue
+        value = global_values.get(key)
+        if value:
+            os.environ[key] = value
+    _sanitize_loaded_credentials()
+
+
 def load_hermes_dotenv(
     *,
     hermes_home: str | os.PathLike | None = None,
@@ -245,6 +325,8 @@ def load_hermes_dotenv(
     if user_env.exists():
         _load_dotenv_with_fallback(user_env, override=True)
         loaded.append(user_env)
+
+    _load_shared_provider_credentials(home_path, user_env)
 
     # Load .op.env AFTER .env so that .env values win, but the bootstrap
     # token (OP_SERVICE_ACCOUNT_TOKEN) becomes available for

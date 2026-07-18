@@ -895,6 +895,8 @@ export interface ModelAssignmentRequest {
   /** OpenAI-compatible endpoint URL. Only honored for custom/local providers
    *  on the main slot — wires a self-hosted endpoint into runtime resolution. */
   base_url?: string
+  /** Acknowledge the backend's cost warning after the user confirms it. */
+  confirm_expensive_model?: boolean
   model: string
   provider: string
   scope: 'main' | 'auxiliary'
@@ -1064,6 +1066,8 @@ export interface ModelAssignmentResponse {
    *  switching the main provider to Nous. Empty unless provider === 'nous'
    *  and the user is a paid subscriber with unconfigured tools. */
   gateway_tools?: string[]
+  confirm_message?: string
+  confirm_required?: boolean
   model?: string
   ok: boolean
   provider?: string

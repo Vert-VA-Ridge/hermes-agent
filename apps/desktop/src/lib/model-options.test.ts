@@ -24,7 +24,7 @@ describe('requestModelOptions', () => {
 
     await expect(requestModelOptions({ gateway: gateway as never, sessionId: null })).resolves.toBe(gatewayPayload)
 
-    expect(gateway.request).toHaveBeenCalledWith('model.options', { explicit_only: true })
+    expect(gateway.request).toHaveBeenCalledWith('model.options', { include_unconfigured: true })
     expect(getGlobalModelOptions).not.toHaveBeenCalled()
   })
 
@@ -36,7 +36,7 @@ describe('requestModelOptions', () => {
     await requestModelOptions({ gateway: gateway as never, refresh: true, sessionId: 'session-1' })
 
     expect(gateway.request).toHaveBeenCalledWith('model.options', {
-      explicit_only: true,
+      include_unconfigured: true,
       refresh: true,
       session_id: 'session-1'
     })
@@ -45,6 +45,20 @@ describe('requestModelOptions', () => {
   it('falls back to REST when no gateway is connected', async () => {
     await requestModelOptions({ refresh: true })
 
-    expect(getGlobalModelOptions).toHaveBeenCalledWith({ explicitOnly: true, refresh: true })
+    expect(getGlobalModelOptions).toHaveBeenCalledWith({
+      explicitOnly: false,
+      includeUnconfigured: true,
+      refresh: true
+    })
+  })
+
+  it('can still request the profile-only subset explicitly', async () => {
+    const gateway = {
+      request: vi.fn(() => Promise.resolve(globalOptions))
+    }
+
+    await requestModelOptions({ explicitOnly: true, gateway: gateway as never, includeUnconfigured: false })
+
+    expect(gateway.request).toHaveBeenCalledWith('model.options', { explicit_only: true })
   })
 })

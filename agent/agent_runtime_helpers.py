@@ -1702,7 +1702,7 @@ def anthropic_prompt_cache_policy(
     # Nous Portal proxies to OpenRouter behind the scenes — identical
     # OpenAI-wire envelope cache_control semantics. Treat it as an
     # OpenRouter-equivalent endpoint for caching layout purposes.
-    is_nous_portal = "nousresearch" in eff_base_url.lower()
+    is_nous_portal = False  # vendored patch 2026-07-16: live Nous Portal API rejects cache_control blocks (400); re-check after hermes update
     is_anthropic_wire = eff_api_mode == "anthropic_messages"
     is_native_anthropic = (
         is_anthropic_wire

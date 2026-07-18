@@ -325,7 +325,7 @@ export function ChatView({
     queryKey: ['model-options', activeSessionId || 'global'],
     queryFn: () => {
       if (!activeSessionId) {
-        return getGlobalModelOptions()
+        return getGlobalModelOptions({ explicitOnly: false, includeUnconfigured: true })
       }
 
       if (!gateway) {
@@ -334,7 +334,7 @@ export function ChatView({
 
       return gateway.request<ModelOptionsResponse>('model.options', {
         session_id: activeSessionId,
-        explicit_only: true
+        include_unconfigured: true
       })
     },
     enabled: gatewayOpen

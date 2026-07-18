@@ -59,7 +59,7 @@ beforeEach(() => {
     tasks: [{ task: 'vision', provider: 'auto', model: '', base_url: '' }]
   })
   getMoaModels.mockResolvedValue(null)
-  setModelAssignment.mockResolvedValue({ provider: 'nous', model: 'hermes-4', gateway_tools: [] })
+  setModelAssignment.mockResolvedValue({ ok: true, provider: 'nous', model: 'hermes-4', gateway_tools: [] })
   getRecommendedDefaultModel.mockResolvedValue({ provider: 'nous', model: 'hermes-4', free_tier: null })
   setEnvVar.mockResolvedValue({ ok: true })
   getHermesConfigRecord.mockResolvedValue({ agent: { reasoning_effort: 'medium', service_tier: 'normal' } })
@@ -157,6 +157,7 @@ describe('ModelSettings', () => {
 
   it('warns when a main switch leaves auxiliary tasks pinned to another provider', async () => {
     setModelAssignment.mockResolvedValueOnce({
+      ok: true,
       provider: 'openrouter',
       model: 'anthropic/claude-opus-4.7',
       gateway_tools: [],
@@ -184,6 +185,33 @@ describe('ModelSettings', () => {
 
     // Banner present on load, no switch required.
     expect(await screen.findByText(/still run on/)).toBeTruthy()
+  })
+
+  it('confirms an expensive model instead of snapping back to the prior route', async () => {
+    setModelAssignment
+      .mockResolvedValueOnce({
+        ok: false,
+        provider: 'nous',
+        model: 'hermes-4',
+        confirm_required: true,
+        confirm_message: 'This route has a higher usage cost.'
+      })
+      .mockResolvedValueOnce({ ok: true, provider: 'nous', model: 'hermes-4', gateway_tools: [] })
+
+    await renderModelSettings()
+    fireEvent.click(await screen.findByRole('button', { name: 'Apply' }))
+
+    expect(await screen.findByText('This route has a higher usage cost.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Use this model' }))
+
+    await waitFor(() =>
+      expect(setModelAssignment).toHaveBeenLastCalledWith({
+        confirm_expensive_model: true,
+        model: 'hermes-4',
+        provider: 'nous',
+        scope: 'main'
+      })
+    )
   })
 })
 
