@@ -1079,6 +1079,17 @@ def _normalize_main_model_assignment(provider: str, model: str) -> tuple[str, st
         cfg = load_config()
     except Exception:
         cfg = {}
+    # A legacy bare ``custom`` route is still a valid, durable endpoint when
+    # model.base_url owns the routing identity. Re-saving that same selection
+    # from Desktop must not feed ``custom`` into resolve_custom_provider(),
+    # whose compatibility fallback selects the first named provider and can
+    # silently replace the endpoint (for example Fireworks -> Perplexity).
+    current_model_cfg = cfg.get("model") if isinstance(cfg, dict) else None
+    if prov_in.lower() == "custom" and isinstance(current_model_cfg, dict):
+        current_provider = str(current_model_cfg.get("provider") or "").strip().lower()
+        current_base_url = str(current_model_cfg.get("base_url") or "").strip()
+        if current_provider == "custom" and current_base_url:
+            return "custom", model_in
     user_providers = cfg.get("providers") if isinstance(cfg, dict) else None
     user_provider = resolve_user_provider(
         prov_in, user_providers if isinstance(user_providers, dict) else {}
