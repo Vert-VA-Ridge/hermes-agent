@@ -34,13 +34,15 @@ import { appViewForPath, isOverlayView, NEW_CHAT_ROUTE, routeSessionId, sessionR
 
 type RememberedSession = Pick<SessionInfo, '_lineage_root_id' | 'ended_at' | 'id' | 'profile'>
 
-export function rememberedSessionHasEnded(
+export function rememberedSessionShouldNotAutoRestore(
   storedSessionId: string,
   sessions: readonly RememberedSession[]
 ): boolean {
   const remembered = sessions.find(session => sessionMatchesStoredId(session, storedSessionId))
 
-  return remembered?.ended_at != null
+  // Auto-restore is only a convenience. After the recents page has loaded,
+  // an absent row is archived or stale and must be reopened explicitly.
+  return remembered == null || remembered.ended_at != null
 }
 
 interface DesktopIntegrationsParams {
@@ -160,7 +162,7 @@ export function useDesktopIntegrations({
           !isOverlayView(appViewForPath(route)) &&
           (!routeSession ||
             (sessionBelongsToProfile(sessions, routeSession, activeProfile) &&
-              !rememberedSessionHasEnded(routeSession, sessions)))
+              !rememberedSessionShouldNotAutoRestore(routeSession, sessions)))
         ) {
           navigate(route, { replace: true })
 
@@ -176,7 +178,7 @@ export function useDesktopIntegrations({
         if (
           last &&
           sessionBelongsToProfile(sessions, last, activeProfile) &&
-          !rememberedSessionHasEnded(last, sessions)
+          !rememberedSessionShouldNotAutoRestore(last, sessions)
         ) {
           navigate(sessionRoute(last), { replace: true })
 

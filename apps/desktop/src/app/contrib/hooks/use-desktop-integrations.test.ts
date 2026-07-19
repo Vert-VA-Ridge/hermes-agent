@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { SessionInfo } from '@/types/hermes'
 
-import { rememberedSessionHasEnded } from './use-desktop-integrations'
+import { rememberedSessionShouldNotAutoRestore } from './use-desktop-integrations'
 
 function session(id: string, endedAt: null | number, root: null | string = null): SessionInfo {
   return {
@@ -23,20 +23,20 @@ function session(id: string, endedAt: null | number, root: null | string = null)
   }
 }
 
-describe('rememberedSessionHasEnded', () => {
+describe('rememberedSessionShouldNotAutoRestore', () => {
   it('blocks cold-start restoration of an explicitly ended session', () => {
-    expect(rememberedSessionHasEnded('ended', [session('ended', 123)])).toBe(true)
+    expect(rememberedSessionShouldNotAutoRestore('ended', [session('ended', 123)])).toBe(true)
   })
 
   it('allows a live remembered session to restore', () => {
-    expect(rememberedSessionHasEnded('live', [session('live', null)])).toBe(false)
+    expect(rememberedSessionShouldNotAutoRestore('live', [session('live', null)])).toBe(false)
   })
 
   it('matches a remembered compression-lineage root', () => {
-    expect(rememberedSessionHasEnded('root', [session('tip', 456, 'root')])).toBe(true)
+    expect(rememberedSessionShouldNotAutoRestore('root', [session('tip', 456, 'root')])).toBe(true)
   })
 
-  it('does not block an unloaded or unknown remembered session', () => {
-    expect(rememberedSessionHasEnded('older-than-page', [session('recent', null)])).toBe(false)
+  it('blocks an absent remembered session after refresh', () => {
+    expect(rememberedSessionShouldNotAutoRestore('archived-or-unknown', [session('recent', null)])).toBe(true)
   })
 })
