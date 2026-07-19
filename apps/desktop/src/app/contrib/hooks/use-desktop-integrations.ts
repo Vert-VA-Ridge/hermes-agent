@@ -23,10 +23,15 @@ import type { SessionInfo } from '@/types/hermes'
 import { requestComposerFocus, requestComposerInsert } from '../../chat/composer/focus'
 import { appViewForPath, isOverlayView, NEW_CHAT_ROUTE, routeSessionId, sessionRoute } from '../../routes'
 
-export function rememberedSessionHasEnded(storedSessionId: string, sessions: SessionInfo[]): boolean {
+export function rememberedSessionShouldNotAutoRestore(storedSessionId: string, sessions: SessionInfo[]): boolean {
   const remembered = sessions.find(session => sessionMatchesStoredId(session, storedSessionId))
 
-  return remembered?.ended_at != null
+  // An archived session is intentionally absent from the normal recents page.
+  // Treating an absent row as live lets a stale localStorage route resume an
+  // archived/ended session immediately after cold start. Auto-restore is a
+  // convenience, so fail closed here; history remains the explicit path for
+  // reopening an older or archived conversation.
+  return remembered == null || remembered.ended_at != null
 }
 
 interface DesktopIntegrationsParams {
@@ -128,7 +133,10 @@ export function useDesktopIntegrations({
         if (route && route !== NEW_CHAT_ROUTE && !isOverlayView(appViewForPath(route))) {
           const rememberedRouteSessionId = routeSessionId(route)
 
-          if (rememberedRouteSessionId && rememberedSessionHasEnded(rememberedRouteSessionId, $sessions.get())) {
+          if (
+            rememberedRouteSessionId &&
+            rememberedSessionShouldNotAutoRestore(rememberedRouteSessionId, $sessions.get())
+          ) {
             setRememberedRoute(NEW_CHAT_ROUTE, activeProfile)
             setRememberedSessionId(null, activeProfile)
 
@@ -146,7 +154,7 @@ export function useDesktopIntegrations({
           return
         }
 
-        if (rememberedSessionHasEnded(last, $sessions.get())) {
+        if (rememberedSessionShouldNotAutoRestore(last, $sessions.get())) {
           setRememberedSessionId(null, activeProfile)
 
           return
