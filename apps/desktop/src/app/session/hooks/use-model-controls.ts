@@ -15,6 +15,7 @@ import {
   getComposerSelectionGeneration,
   getCurrentModelSource,
   markComposerSelectionManual,
+  restoreRememberedComposerState,
   setCurrentModel,
   setCurrentModelSource,
   setCurrentProvider
@@ -98,6 +99,11 @@ export function useModelControls({ queryClient, requestGateway }: ModelControlsO
         if ($activeSessionId.get()) {
           return
         }
+
+        // A historical/live session temporarily owns the footer model display.
+        // Rehydrate the explicit next-chat choice before deciding whether a
+        // manual pick should remain or the profile default should be fetched.
+        restoreRememberedComposerState()
 
         // A manual pick stays sticky UNLESS it was removed from the catalog (its
         // model no longer exists on the provider), in which case keeping it would

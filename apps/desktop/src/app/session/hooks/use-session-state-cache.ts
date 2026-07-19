@@ -11,11 +11,11 @@ import {
   $busy,
   $messages,
   setActiveSessionStoredIdRotation,
-  setCurrentFastMode,
-  setCurrentModel,
+  setCurrentFastModeTransient,
+  setCurrentModelTransient,
   setCurrentPersonality,
-  setCurrentProvider,
-  setCurrentReasoningEffort,
+  setCurrentProviderTransient,
+  setCurrentReasoningEffortTransient,
   setCurrentServiceTier,
   setTurnStartedAt,
   setYoloActive
@@ -36,11 +36,11 @@ interface SessionStateCacheOptions {
 }
 
 function syncRuntimeMetadataToView(state: ClientSessionState) {
-  setCurrentModel(state.model ?? '')
-  setCurrentProvider(state.provider ?? '')
-  setCurrentReasoningEffort(state.reasoningEffort ?? '')
+  setCurrentModelTransient(state.model ?? '')
+  setCurrentProviderTransient(state.provider ?? '')
+  setCurrentReasoningEffortTransient(state.reasoningEffort ?? '')
   setCurrentServiceTier(state.serviceTier ?? '')
-  setCurrentFastMode(state.fast ?? false)
+  setCurrentFastModeTransient(state.fast ?? false)
   setYoloActive(state.yolo ?? false)
   setCurrentPersonality(state.personality ?? '')
 }
