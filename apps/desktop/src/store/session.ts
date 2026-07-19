@@ -1307,6 +1307,10 @@ export const setCurrentModel = (next: Updater<string>) => {
   }
 }
 
+// Runtime/session metadata is view state, not a new choice for future chats.
+// Opening an old thread must never rewrite the durable composer selection.
+export const setCurrentModelTransient = (next: Updater<string>) => updateAtom($currentModel, next)
+
 export const setCurrentProvider = (next: Updater<string>) => {
   updateAtom($currentProvider, next)
   const key = composerSelectionKey(COMPOSER_PROVIDER_KEY)
@@ -1315,6 +1319,8 @@ export const setCurrentProvider = (next: Updater<string>) => {
     persistString(key, $currentProvider.get() || null)
   }
 }
+
+export const setCurrentProviderTransient = (next: Updater<string>) => updateAtom($currentProvider, next)
 
 export const getCurrentModelSource = (): ComposerModelSource => {
   const source = storedComposerString(COMPOSER_MODEL_SOURCE_KEY)
@@ -1363,11 +1369,27 @@ export const $defaultReasoningEffort = atom('')
 
 export const setDefaultReasoningEffort = (next: string) => updateAtom($defaultReasoningEffort, next)
 
+export const setCurrentReasoningEffortTransient = (next: Updater<string>) =>
+  updateAtom($currentReasoningEffort, next)
+
 export const setCurrentServiceTier = (next: Updater<string>) => updateAtom($currentServiceTier, next)
 
 export const setCurrentFastMode = (next: Updater<boolean>) => {
   updateAtom($currentFastMode, next)
   persistBoolean(COMPOSER_FAST_KEY, $currentFastMode.get())
+}
+
+export const setCurrentFastModeTransient = (next: Updater<boolean>) => updateAtom($currentFastMode, next)
+
+/** Restore the explicit next-chat choices after leaving a historical/live
+ * session. Session runtime updates use transient setters and therefore never
+ * mutate these stored values. */
+export function restoreRememberedComposerState(): void {
+  $currentModel.set(storedString(COMPOSER_MODEL_KEY) ?? '')
+  $currentProvider.set(storedString(COMPOSER_PROVIDER_KEY) ?? '')
+  $currentReasoningEffort.set(storedString(COMPOSER_EFFORT_KEY) ?? '')
+  $currentFastMode.set(storedBoolean(COMPOSER_FAST_KEY, false))
+  $currentModelSource.set(getCurrentModelSource())
 }
 
 export const setYoloActive = (next: Updater<boolean>) => updateAtom($yoloActive, next)

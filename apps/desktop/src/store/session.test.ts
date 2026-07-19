@@ -22,8 +22,10 @@ import {
   $activeSessionId,
   $connection,
   $currentCwd,
+  $currentFastMode,
   $currentModel,
   $currentProvider,
+  $currentReasoningEffort,
   $selectedStoredSessionId,
   $sessions,
   $unreadFinishedSessionIds,
@@ -49,6 +51,7 @@ import {
   mergeSessionPage,
   rememberedSessionProfile,
   resolveComposerSessionKey,
+  restoreRememberedComposerState,
   sessionBelongsToProfile,
   sessionMatchesStoredId,
   sessionOwnerRouteFromRow,
@@ -57,9 +60,15 @@ import {
   setConnection,
   setCurrentCwd,
   setCurrentCwdTransient,
+  setCurrentFastMode,
+  setCurrentFastModeTransient,
   setCurrentModel,
   setCurrentModelSource,
+  setCurrentModelTransient,
   setCurrentProvider,
+  setCurrentProviderTransient,
+  setCurrentReasoningEffort,
+  setCurrentReasoningEffortTransient,
   setRememberedRoute,
   setRememberedSessionId,
   setSelectedStoredSessionId,
@@ -320,6 +329,40 @@ describe('knownSessionOwner', () => {
     setSessionOwnerHint('hidden', route)
 
     expect(knownSessionOwner([], 'hidden')).toEqual(route)
+  })
+})
+
+describe('composer state versus historical session runtime', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+  })
+
+  afterEach(() => {
+    window.localStorage.clear()
+  })
+
+  it('does not let an old session rewrite the durable next-chat route', () => {
+    setCurrentModel('moonshotai/kimi-k3')
+    setCurrentProvider('nous')
+    setCurrentReasoningEffort('xhigh')
+    setCurrentFastMode(true)
+
+    setCurrentModelTransient('grok-build-0.1')
+    setCurrentProviderTransient('xai-oauth')
+    setCurrentReasoningEffortTransient('low')
+    setCurrentFastModeTransient(false)
+
+    expect($currentModel.get()).toBe('grok-build-0.1')
+    expect($currentProvider.get()).toBe('xai-oauth')
+    expect(window.localStorage.getItem('hermes.desktop.composer.model')).toBe('moonshotai/kimi-k3')
+    expect(window.localStorage.getItem('hermes.desktop.composer.provider')).toBe('nous')
+
+    restoreRememberedComposerState()
+
+    expect($currentModel.get()).toBe('moonshotai/kimi-k3')
+    expect($currentProvider.get()).toBe('nous')
+    expect($currentReasoningEffort.get()).toBe('xhigh')
+    expect($currentFastMode.get()).toBe(true)
   })
 })
 
