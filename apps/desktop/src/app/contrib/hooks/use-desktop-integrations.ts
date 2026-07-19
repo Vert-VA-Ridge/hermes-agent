@@ -20,6 +20,7 @@ import {
   getRememberedRoute,
   getRememberedSessionId,
   sessionBelongsToProfile,
+  sessionMatchesStoredId,
   setRememberedRoute,
   setRememberedSessionId
 } from '@/store/session'
@@ -31,7 +32,16 @@ import type { SessionInfo } from '@/types/hermes'
 import { requestComposerFocus, requestComposerInsert } from '../../chat/composer/focus'
 import { appViewForPath, isOverlayView, NEW_CHAT_ROUTE, routeSessionId, sessionRoute } from '../../routes'
 
-type RememberedSession = Pick<SessionInfo, '_lineage_root_id' | 'id' | 'profile'>
+type RememberedSession = Pick<SessionInfo, '_lineage_root_id' | 'ended_at' | 'id' | 'profile'>
+
+export function rememberedSessionHasEnded(
+  storedSessionId: string,
+  sessions: readonly RememberedSession[]
+): boolean {
+  const remembered = sessions.find(session => sessionMatchesStoredId(session, storedSessionId))
+
+  return remembered?.ended_at != null
+}
 
 interface DesktopIntegrationsParams {
   activeProfile: string
@@ -148,7 +158,9 @@ export function useDesktopIntegrations({
           route &&
           route !== NEW_CHAT_ROUTE &&
           !isOverlayView(appViewForPath(route)) &&
-          (!routeSession || sessionBelongsToProfile(sessions, routeSession, activeProfile))
+          (!routeSession ||
+            (sessionBelongsToProfile(sessions, routeSession, activeProfile) &&
+              !rememberedSessionHasEnded(routeSession, sessions)))
         ) {
           navigate(route, { replace: true })
 
@@ -161,7 +173,11 @@ export function useDesktopIntegrations({
           setRememberedRoute(null, activeProfile)
         }
 
-        if (last && sessionBelongsToProfile(sessions, last, activeProfile)) {
+        if (
+          last &&
+          sessionBelongsToProfile(sessions, last, activeProfile) &&
+          !rememberedSessionHasEnded(last, sessions)
+        ) {
           navigate(sessionRoute(last), { replace: true })
 
           return
