@@ -11,15 +11,23 @@ import {
   getRememberedRoute,
   getRememberedSessionId,
   rememberedSessionProfile,
+  sessionMatchesStoredId,
   setRememberedRoute,
   setRememberedSessionId
 } from '@/store/session'
 import { onSessionsChanged } from '@/store/session-sync'
 import { openUpdatesWindow, startUpdatePoller, stopUpdatePoller } from '@/store/updates'
 import { isSecondaryWindow } from '@/store/windows'
+import type { SessionInfo } from '@/types/hermes'
 
 import { requestComposerFocus, requestComposerInsert } from '../../chat/composer/focus'
-import { appViewForPath, isOverlayView, NEW_CHAT_ROUTE, sessionRoute } from '../../routes'
+import { appViewForPath, isOverlayView, NEW_CHAT_ROUTE, routeSessionId, sessionRoute } from '../../routes'
+
+export function rememberedSessionHasEnded(storedSessionId: string, sessions: SessionInfo[]): boolean {
+  const remembered = sessions.find(session => sessionMatchesStoredId(session, storedSessionId))
+
+  return remembered?.ended_at != null
+}
 
 interface DesktopIntegrationsParams {
   chatOpen: boolean
@@ -101,20 +109,56 @@ export function useDesktopIntegrations({
 
     restoredRef.current = true
     const activeProfile = $activeGatewayProfile.get()
-    const route = getRememberedRoute(activeProfile)
+    let cancelled = false
 
-    if (route && route !== NEW_CHAT_ROUTE && !isOverlayView(appViewForPath(route))) {
-      navigate(route, { replace: true })
+    // A session may have been explicitly interrupted + closed through another
+    // control surface while Desktop was hidden or restarting. Refresh before
+    // restoring so a stale localStorage route cannot resurrect that ended turn.
+    // Ended sessions remain in history and are still manually resumable; this
+    // guard applies only to the automatic cold-start restore.
+    void Promise.resolve(refreshSessions())
+      .catch(() => undefined)
+      .then(() => {
+        if (cancelled) {
+          return
+        }
 
-      return
+        const route = getRememberedRoute(activeProfile)
+
+        if (route && route !== NEW_CHAT_ROUTE && !isOverlayView(appViewForPath(route))) {
+          const rememberedRouteSessionId = routeSessionId(route)
+
+          if (rememberedRouteSessionId && rememberedSessionHasEnded(rememberedRouteSessionId, $sessions.get())) {
+            setRememberedRoute(NEW_CHAT_ROUTE, activeProfile)
+            setRememberedSessionId(null, activeProfile)
+
+            return
+          }
+
+          navigate(route, { replace: true })
+
+          return
+        }
+
+        const last = getRememberedSessionId(activeProfile)
+
+        if (!last) {
+          return
+        }
+
+        if (rememberedSessionHasEnded(last, $sessions.get())) {
+          setRememberedSessionId(null, activeProfile)
+
+          return
+        }
+
+        navigate(sessionRoute(last), { replace: true })
+      })
+
+    return () => {
+      cancelled = true
     }
-
-    const last = getRememberedSessionId(activeProfile)
-
-    if (last) {
-      navigate(sessionRoute(last), { replace: true })
-    }
-  }, [locationPathname, navigate])
+  }, [locationPathname, navigate, refreshSessions])
 
   useEffect(() => {
     if (!resumeExhaustedSessionId) {
