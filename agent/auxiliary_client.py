@@ -8616,6 +8616,7 @@ def _call_llm_impl(
     api_mode: str = None,
     stream: bool = False,
     stream_options: dict = None,
+    allow_fallback: bool = True,
 ) -> Any:
     """Centralized synchronous LLM call.
 
@@ -8647,6 +8648,9 @@ def _call_llm_impl(
             output can stream to the user.
         stream_options: Passed through to the request when stream is True
             (e.g. {"include_usage": True}).
+        allow_fallback: When False, keep this call on its explicitly resolved
+            provider/model and raise there instead of entering the auxiliary
+            fallback chain. MoA slots use this to preserve preset routing.
 
     Returns:
         Response object with .choices[0].message.content, OR — when stream=True —
@@ -9203,7 +9207,7 @@ def _call_llm_impl(
             or _is_model_incompatible_error(first_err)
             or _is_invalid_aux_response_error(first_err)
         )
-        if should_fallback and (is_auto or is_capacity_error):
+        if allow_fallback and should_fallback and (is_auto or is_capacity_error):
             if _is_auth_error(first_err):
                 reason = "auth error"
             elif _is_payment_error(first_err):

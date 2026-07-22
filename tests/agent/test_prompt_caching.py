@@ -463,7 +463,3 @@ class TestStripAnthropicCacheControl:
         assert isinstance(content, list) and len(content) == 2
         assert content[0] == {"type": "text", "text": "see"}
         assert content[1]["type"] == "image_url"
-
-
-
-

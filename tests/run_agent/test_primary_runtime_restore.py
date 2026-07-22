@@ -146,6 +146,38 @@ class TestRestorePrimaryRuntime:
         assert agent.model == original_model
         assert agent.provider == original_provider
 
+    def test_restores_moa_virtual_client_instead_of_generic_transport(self):
+        """A failed MoA turn must restore the virtual preset facade.
+
+        Rebuilding a generic OpenAI client leaks the preset name (``max`` or
+        ``default``) to moa://local or the preceding fallback endpoint.
+        """
+        agent = _make_agent(provider="moa", base_url="moa://local")
+        agent.model = "max"
+        agent._primary_runtime["model"] = "max"
+        agent._primary_runtime["provider"] = "moa"
+        agent._primary_runtime["base_url"] = "moa://local"
+        agent._primary_runtime["api_mode"] = "chat_completions"
+        agent._fallback_activated = True
+        agent.provider = "xai-oauth"
+        agent.base_url = "https://api.x.ai/v1"
+        agent.client = MagicMock()
+        callback = MagicMock()
+        agent._moa_reference_callback = callback
+        agent._credential_pool = None
+
+        with patch.object(agent, "_create_openai_client") as generic_client:
+            result = agent._restore_primary_runtime()
+
+        assert result is True
+        assert agent.provider == "moa"
+        assert agent.model == "max"
+        assert agent.api_mode == "chat_completions"
+        assert agent.base_url == "moa://local"
+        assert type(agent.client).__name__ == "MoAClient"
+        assert agent.client.chat.completions.reference_callback is callback
+        generic_client.assert_not_called()
+
     def test_resets_fallback_index(self):
         """After restore, the full fallback chain should be available again."""
         agent = _make_agent(
