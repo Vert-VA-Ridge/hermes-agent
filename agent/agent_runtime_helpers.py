@@ -1452,8 +1452,8 @@ def try_recover_primary_transport(
     # Messages route holds a local Anthropic SDK client whose connection
     # pool *does* need the rebuild every other anthropic_messages provider
     # already gets — don't blanket-skip the dual-wire path.
-    if (
-        provider_lower in {"nous", "nous-portal", "nousresearch"}
+    if provider_lower == "moa" or (
+        provider_lower in {"nous", "nous-portal", "nous-research", "nousresearch"}
         and getattr(agent, "api_mode", None) != "anthropic_messages"
     ):
         return False
@@ -1488,7 +1488,24 @@ def try_recover_primary_transport(
         agent._reasoning_echo_flag = rt.get("reasoning_echo_flag", False)
         agent.request_overrides = dict(rt.get("request_overrides") or {})
 
-        if agent.api_mode == "anthropic_messages":
+        primary_provider = str(rt.get("provider") or "").strip().lower()
+        if primary_provider == "moa":
+            from agent.moa_loop import MoAClient
+
+            # MoA is a virtual chat.completions facade. Its real transports
+            # are selected independently for each reference and aggregator
+            # slot, so restoring it as a generic OpenAI client would send the
+            # preset name ("default" / "max") to moa://local or a stale
+            # fallback endpoint.
+            agent.api_mode = "chat_completions"
+            agent.api_key = rt.get("api_key") or "moa-virtual-provider"
+            agent.base_url = "moa://local"
+            agent._client_kwargs = {}
+            agent.client = MoAClient(
+                agent.model or "default",
+                reference_callback=getattr(agent, "_moa_reference_callback", None),
+            )
+        elif agent.api_mode == "anthropic_messages":
             from agent.anthropic_adapter import build_anthropic_client
             agent._anthropic_api_key = rt["anthropic_api_key"]
             agent._anthropic_base_url = rt["anthropic_base_url"]

@@ -68,6 +68,7 @@ moa:
         ("moa_reference", "openai-codex", "gpt-5.5"),
         ("moa_aggregator", "openrouter", "anthropic/claude-opus-4.8"),
     ]
+    assert all(c["allow_fallback"] is False for c in calls)
     assert calls[1]["tools"] is not None
 
 
@@ -525,6 +526,7 @@ def test_run_reference_prepends_advisory_system_prompt(monkeypatch):
     msgs = captured["messages"]
     assert msgs[0] == {"role": "system", "content": _REFERENCE_SYSTEM_PROMPT}
     assert msgs[-1]["role"] == "user"
+    assert captured["allow_fallback"] is False
 
 
 

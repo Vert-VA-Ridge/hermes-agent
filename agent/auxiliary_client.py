@@ -10204,6 +10204,7 @@ def call_llm(
     stream_options: dict = None,
     route_info: Optional[Dict[str, str]] = None,
     latency_info: Optional[Dict[str, int]] = None,
+    allow_fallback: bool = True,
 ) -> Any:
     """Run an auxiliary LLM request, applying the configured task limit."""
     queue_started_at = time.monotonic()
@@ -10258,6 +10259,7 @@ def call_llm(
                 stream=stream,
                 stream_options=stream_options,
                 route_info=route_info,
+                allow_fallback=allow_fallback,
             )
         if stream and semaphore is not None:
             stream_semaphore = semaphore
@@ -10308,6 +10310,7 @@ def _call_llm_impl(
     stream: bool = False,
     stream_options: dict = None,
     route_info: Optional[Dict[str, str]] = None,
+    allow_fallback: bool = True,
 ) -> Any:
     """Centralized synchronous LLM call.
 
@@ -10339,6 +10342,10 @@ def _call_llm_impl(
             output can stream to the user.
         stream_options: Passed through to the request when stream is True
             (e.g. {"include_usage": True}).
+        route_info: Optional mutable receipt populated with the resolved route.
+        allow_fallback: When False, keep this call on its explicitly resolved
+            provider/model and raise there instead of entering the auxiliary
+            fallback chain. MoA slots use this to preserve preset routing.
 
     Returns:
         Response object with .choices[0].message.content, OR — when stream=True —
@@ -10975,7 +10982,7 @@ def _call_llm_impl(
             or _is_model_incompatible_error(first_err)
             or _is_invalid_aux_response_error(first_err)
         )
-        if should_fallback and (is_auto or is_capacity_error):
+        if allow_fallback and should_fallback and (is_auto or is_capacity_error):
             if _is_auth_error(first_err):
                 reason = "auth error"
             elif _is_payment_error(first_err):

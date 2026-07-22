@@ -594,6 +594,7 @@ def _run_reference(
             timeout=reference_timeout,
             reasoning_config=_slot_reasoning_config(slot),
             extra_headers=extra_headers,
+            allow_fallback=False,
             **runtime,
         )
         usage = CanonicalUsage()
@@ -1376,6 +1377,7 @@ def aggregate_moa_context(
             messages=agg_messages,
             temperature=aggregator_temperature,
             reasoning_config=_aggregator_reasoning_config(aggregator),
+            allow_fallback=False,
             **agg_runtime,
         )
         synthesis = _extract_text(response)
@@ -1875,6 +1877,7 @@ class MoAChatCompletions:
             # Prepared requests must retain the acting aggregator's reasoning
             # policy exactly as the direct create() path does (#64187).
             reasoning_config=_aggregator_reasoning_config(aggregator),
+            allow_fallback=False,
             **stream_kwargs,
             **agg_runtime,
         )
