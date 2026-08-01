@@ -620,7 +620,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
       const epoch = profileEpoch.current
 
       const result = await setModelAssignment({
-        confirm_expensive_model: confirmExpensiveModel,
+        ...(confirmExpensiveModel ? { confirm_expensive_model: true } : {}),
         model: modelSelection,
         provider: providerSelection,
         scope: 'main',
