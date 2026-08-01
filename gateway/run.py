@@ -23499,6 +23499,62 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             return url.rstrip("/")
         return None
 
+    @staticmethod
+    def _get_proxy_secret() -> str:
+        """Return the proxy bearer token without requiring a service env file.
+
+        ``GATEWAY_PROXY_KEY`` remains the first-choice deployment override.
+        ``gateway.proxy_key`` lets supervised installations keep the token in
+        their already-private Hermes config instead of a world-readable
+        systemd unit drop-in.
+        """
+        try:
+            from agent.secret_scope import UnscopedSecretError, get_secret
+
+            try:
+                key = (get_secret("GATEWAY_PROXY_KEY") or "").strip()
+            except UnscopedSecretError:
+                key = os.getenv("GATEWAY_PROXY_KEY", "").strip()
+        except Exception:
+            key = os.getenv("GATEWAY_PROXY_KEY", "").strip()
+        if key:
+            return key
+        cfg = _load_gateway_config()
+        return str((cfg.get("gateway") or {}).get("proxy_key") or "").strip()
+
+    @staticmethod
+    def _get_proxy_session_id() -> str:
+        """Return an optional authoritative transcript id for proxy turns.
+
+        A fixed id is useful when several transport-only gateways must all
+        speak through one host-side Hermes conversation.  The transport keeps
+        its own local routing id for delivery bookkeeping; only the remote API
+        request is pinned to this authoritative transcript.
+        """
+        session_id = os.getenv("GATEWAY_PROXY_SESSION_ID", "").strip()
+        if session_id:
+            return session_id
+        cfg = _load_gateway_config()
+        return str((cfg.get("gateway") or {}).get("proxy_session_id") or "").strip()
+
+    @staticmethod
+    def _proxy_session_platforms() -> set[str]:
+        """Return the optional platform allowlist for transcript pinning."""
+        cfg = _load_gateway_config()
+        raw = (cfg.get("gateway") or {}).get("proxy_session_platforms") or []
+        if isinstance(raw, str):
+            raw = [raw]
+        return {str(item).strip().lower() for item in raw if str(item).strip()}
+
+    def _proxy_session_id_for_source(self, source: "SessionSource", fallback: str) -> str:
+        """Use the authoritative transcript only for configured transports."""
+        pinned_session_id = self._get_proxy_session_id()
+        pinned_platforms = self._proxy_session_platforms()
+        source_platform = str(getattr(source.platform, "value", source.platform) or "").lower()
+        if pinned_session_id and (not pinned_platforms or source_platform in pinned_platforms):
+            return pinned_session_id
+        return fallback
+
     def _build_stream_consumer_config(
         self,
         source: "SessionSource",
@@ -23610,18 +23666,8 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 "tools": [],
             }
 
-        # Scope-aware read: the proxy key is a per-profile credential; under
-        # multiplex honor the installed scope's verdict (Slack pattern for
-        # the unscoped default-profile loop).
-        try:
-            from agent.secret_scope import UnscopedSecretError, get_secret
-
-            try:
-                proxy_key = (get_secret("GATEWAY_PROXY_KEY") or "").strip()
-            except UnscopedSecretError:
-                proxy_key = os.getenv("GATEWAY_PROXY_KEY", "").strip()
-        except Exception:
-            proxy_key = os.getenv("GATEWAY_PROXY_KEY", "").strip()
+        proxy_key = self._get_proxy_secret()
+        proxy_session_id = self._proxy_session_id_for_source(source, session_id)
 
         def _run_still_current() -> bool:
             if run_generation is None or not session_key:
@@ -23656,8 +23702,8 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         headers: Dict[str, str] = {"Content-Type": "application/json"}
         if proxy_key:
             headers["Authorization"] = f"Bearer {proxy_key}"
-        if session_id:
-            headers["X-Hermes-Session-Id"] = session_id
+        if proxy_session_id:
+            headers["X-Hermes-Session-Id"] = proxy_session_id
 
         body = {
             "model": "hermes-agent",
@@ -23835,7 +23881,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             }
         logger.info(
             "proxy response: url=%s session=%s time=%.1fs response=%d chars",
-            proxy_url, (session_id or "")[:20], _elapsed, len(full_response),
+            proxy_url, (proxy_session_id or "")[:20], _elapsed, len(full_response),
         )
 
         return {

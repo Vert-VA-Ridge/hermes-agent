@@ -108,6 +108,56 @@ class TestGetProxyUrl:
         with patch("gateway.run._load_gateway_config", return_value=cfg):
             assert runner._get_proxy_url() == "http://10.0.0.1:8642"
 
+    def test_reads_secret_and_authoritative_session_from_config(self, monkeypatch):
+        monkeypatch.delenv("GATEWAY_PROXY_KEY", raising=False)
+        monkeypatch.delenv("GATEWAY_PROXY_SESSION_ID", raising=False)
+        runner = _make_runner()
+        cfg = {
+            "gateway": {
+                "proxy_key": "config-secret",
+                "proxy_session_id": "macd-primary",
+            }
+        }
+        with patch("gateway.run._load_gateway_config", return_value=cfg):
+            assert runner._get_proxy_secret() == "config-secret"
+            assert runner._get_proxy_session_id() == "macd-primary"
+
+    def test_environment_overrides_proxy_config(self, monkeypatch):
+        monkeypatch.setenv("GATEWAY_PROXY_KEY", "env-secret")
+        monkeypatch.setenv("GATEWAY_PROXY_SESSION_ID", "env-session")
+        runner = _make_runner()
+        cfg = {
+            "gateway": {
+                "proxy_key": "config-secret",
+                "proxy_session_id": "config-session",
+            }
+        }
+        with patch("gateway.run._load_gateway_config", return_value=cfg):
+            assert runner._get_proxy_secret() == "env-secret"
+            assert runner._get_proxy_session_id() == "env-session"
+
+    def test_reads_proxy_session_platform_allowlist(self):
+        runner = _make_runner()
+        cfg = {"gateway": {"proxy_session_platforms": ["Signal", "telegram"]}}
+        with patch("gateway.run._load_gateway_config", return_value=cfg):
+            assert runner._proxy_session_platforms() == {"signal", "telegram"}
+
+    def test_session_pin_only_applies_to_selected_platform(self):
+        runner = _make_runner()
+        cfg = {
+            "gateway": {
+                "proxy_session_id": "macd-primary",
+                "proxy_session_platforms": ["signal"],
+            }
+        }
+        with patch("gateway.run._load_gateway_config", return_value=cfg):
+            assert runner._proxy_session_id_for_source(
+                _make_source(Platform.SIGNAL), "signal-fallback"
+            ) == "macd-primary"
+            assert runner._proxy_session_id_for_source(
+                _make_source(Platform.WEBHOOK), "webhook-fallback"
+            ) == "webhook-fallback"
+
 
 class TestResolveProxyUrl:
 
@@ -222,6 +272,60 @@ class TestRunAgentViaProxy:
         # Verify response was assembled
         assert result["final_response"] == "Hello world"
 
+    @pytest.mark.asyncio
+    async def test_authoritative_session_overrides_transport_session(self, monkeypatch):
+        monkeypatch.setenv("GATEWAY_PROXY_URL", "http://host:8642")
+        monkeypatch.setenv("GATEWAY_PROXY_KEY", "test-key-123")
+        monkeypatch.setenv("GATEWAY_PROXY_SESSION_ID", "macd-primary")
+        runner = _make_runner()
+        source = _make_source()
+        response = _FakeSSEResponse(
+            status=200,
+            sse_chunks=[b'data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n'],
+        )
+        session = _FakeSession(response)
+
+        with patch("gateway.run._load_gateway_config", return_value={}):
+            with _patch_aiohttp(session):
+                with patch("aiohttp.ClientTimeout"):
+                    result = await runner._run_agent_via_proxy(
+                        message="hello",
+                        context_prompt="",
+                        history=[],
+                        source=source,
+                        session_id="transport-session",
+                    )
+
+        assert session.captured_headers["X-Hermes-Session-Id"] == "macd-primary"
+        assert result["session_id"] == "transport-session"
+
+    @pytest.mark.asyncio
+    async def test_authoritative_session_pin_is_limited_to_selected_platforms(self, monkeypatch):
+        monkeypatch.setenv("GATEWAY_PROXY_URL", "http://host:8642")
+        monkeypatch.setenv("GATEWAY_PROXY_KEY", "test-key-123")
+        monkeypatch.setenv("GATEWAY_PROXY_SESSION_ID", "macd-primary")
+        runner = _make_runner()
+        source = _make_source(platform=Platform.WEBHOOK)
+        response = _FakeSSEResponse(
+            status=200,
+            sse_chunks=[b'data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n'],
+        )
+        session = _FakeSession(response)
+        cfg = {"gateway": {"proxy_session_platforms": ["signal"]}}
+
+        with patch("gateway.run._load_gateway_config", return_value=cfg):
+            with _patch_aiohttp(session):
+                with patch("aiohttp.ClientTimeout"):
+                    await runner._run_agent_via_proxy(
+                        message="cron turn",
+                        context_prompt="",
+                        history=[],
+                        source=source,
+                        session_id="cron-transport-session",
+                    )
+
+        assert session.captured_headers["X-Hermes-Session-Id"] == "cron-transport-session"
+
 
     @pytest.mark.asyncio
     async def test_handles_connection_error(self, monkeypatch):
@@ -294,4 +398,3 @@ class TestEnvVarRegistration:
         info = OPTIONAL_ENV_VARS["GATEWAY_PROXY_URL"]
         assert info["category"] == "messaging"
         assert info["password"] is False
-
