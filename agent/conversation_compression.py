@@ -160,8 +160,9 @@ PRE_API_COMPRESSION_STATUS_TEMPLATE = (
     "near the context/output limit. Compacting before the next model call."
 )
 PREFLIGHT_COMPRESSION_STATUS_TEMPLATE = (
-    "📦 Preflight compression: ~{tokens:,} tokens "
-    ">= {threshold:,} threshold. This may take a moment."
+    "📦 Preflight compression: session context reached ~{tokens:,} tokens "
+    "(maintenance threshold {threshold:,}). Compacting now so work can continue. "
+    "Please close out and start a fresh session soon."
 )
 IDLE_COMPACTION_STATUS_TEMPLATE = (
     "💤 Resumed after {idle_seconds}s idle — compacting "
