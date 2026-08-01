@@ -327,9 +327,12 @@ def _check_fn_cached(fn: Callable) -> bool:
             )
             return True
 
-        # No recent success (or grace expired) — honor the failure. Log it so
-        # silent tool loss in quiet mode (subagents) is diagnosable.
-        logger.warning(
+        # No recent success (or grace expired) — honor the failure. A clean
+        # False is the normal result for an optional capability that is not
+        # configured, so keep it out of warning/error logs. Exceptions remain
+        # warnings because they indicate a broken availability probe.
+        log_unavailable = logger.warning if raised else logger.debug
+        log_unavailable(
             "check_fn %s %s; dependent tools will be unavailable this turn",
             getattr(fn, "__qualname__", fn),
             "raised" if raised else "returned False",
