@@ -25,8 +25,10 @@ Design:
 
 import json
 import logging
+import os
 import time
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from hermes_constants import get_hermes_home
 from typing import Dict, Any, List, Optional, Tuple
@@ -511,6 +513,12 @@ class MemoryStore:
                     "usage": f"{current:,}/{limit:,}",
                 })
 
+            archive_error = self._archive_entries(
+                target, [entries[idx]], action="replace"
+            )
+            if archive_error:
+                return {"success": False, "error": archive_error}
+
             entries[idx] = new_content
             self._set_entries(target, entries)
             self.save_to_disk(target)
@@ -553,6 +561,11 @@ class MemoryStore:
                 # All identical -- safe to remove just the first
 
             idx = matches[0][0]
+            archive_error = self._archive_entries(
+                target, [entries[idx]], action="remove"
+            )
+            if archive_error:
+                return {"success": False, "error": archive_error}
             entries.pop(idx)
             self._set_entries(target, entries)
             self.save_to_disk(target)
@@ -594,6 +607,7 @@ class MemoryStore:
 
             # Work on a copy; only commit if the whole batch validates.
             working: List[str] = list(self._entries_for(target))
+            archive_entries: List[str] = []
             limit = self._char_limit(target)
 
             for i, op in enumerate(operations):
@@ -626,6 +640,7 @@ class MemoryStore:
                             target,
                             f"{pos}: '{old_text}' matched multiple distinct entries -- be more specific.",
                         )
+                    archive_entries.append(working[matches[0]])
                     working[matches[0]] = content
 
                 elif act == "remove":
@@ -639,6 +654,7 @@ class MemoryStore:
                             target,
                             f"{pos}: '{old_text}' matched multiple distinct entries -- be more specific.",
                         )
+                    archive_entries.append(working[matches[0]])
                     working.pop(matches[0])
 
                 else:
@@ -661,6 +677,16 @@ class MemoryStore:
                     "current_entries": self._entries_for(target),
                     "usage": f"{current:,}/{limit:,}",
                 })
+
+            # Archive superseded entries before committing the active-store
+            # rewrite. If archival fails, fail closed and leave active memory
+            # untouched. A later save failure can create a duplicate archive
+            # record, but it can never lose the source entry.
+            archive_error = self._archive_entries(
+                target, archive_entries, action="batch"
+            )
+            if archive_error:
+                return {"success": False, "error": archive_error}
 
             # Commit.
             self._set_entries(target, working)
@@ -698,6 +724,51 @@ class MemoryStore:
     def _previews(entries: List[str], width: int = 80) -> List[str]:
         """Truncated one-line previews of entries for error feedback."""
         return [e[:width] + ("..." if len(e) > width else "") for e in entries]
+
+    @staticmethod
+    def _archive_entries(
+        target: str, entries: List[str], *, action: str
+    ) -> Optional[str]:
+        """Append superseded entries to a recoverable profile-local archive.
+
+        Active prompt memory stays lean, while replacements and removals remain
+        searchable provenance instead of destructive deletion. The archive is
+        JSONL so each mutation is self-contained and append-only. Archival is a
+        precondition for the active-store rewrite: any failure leaves MEMORY.md
+        or USER.md unchanged.
+        """
+        if not entries:
+            return None
+        archive_dir = get_memory_dir() / "archive"
+        archive_path = archive_dir / f"{target.upper()}.jsonl"
+        record = {
+            "version": 1,
+            "archived_at": datetime.now(timezone.utc).isoformat(),
+            "target": target,
+            "action": action,
+            "entries": list(entries),
+        }
+        try:
+            archive_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+            try:
+                archive_dir.chmod(0o700)
+            except OSError:
+                pass
+            with MemoryStore._file_lock(archive_path):
+                with archive_path.open("a", encoding="utf-8") as handle:
+                    handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+                    handle.flush()
+                    os.fsync(handle.fileno())
+            try:
+                archive_path.chmod(0o600)
+            except OSError:
+                pass
+        except (OSError, IOError, TypeError, ValueError) as exc:
+            return (
+                f"Refusing to {action} {target}: could not archive the "
+                f"superseded entry first ({exc}). Active memory is unchanged."
+            )
+        return None
 
     def _success_response(self, target: str, message: str = None) -> Dict[str, Any]:
         # A successful write means the consolidation loop made progress, so the
@@ -1234,7 +1305,5 @@ registry.register(
     check_fn=check_memory_requirements,
     emoji="🧠",
 )
-
-
 
 
