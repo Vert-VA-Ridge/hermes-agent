@@ -387,6 +387,30 @@ class TestBuildSkillsSystemPrompt:
         second = build_skills_system_prompt()
         assert "cached-skill" not in second
 
+    def test_rebuilds_prompt_when_skill_tree_changes_outside_manager(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        first_dir = tmp_path / "skills" / "ops" / "first-skill"
+        first_dir.mkdir(parents=True)
+        (first_dir / "SKILL.md").write_text(
+            "---\nname: first-skill\ndescription: First skill.\n---\n"
+        )
+
+        first = build_skills_system_prompt()
+        assert "first-skill" in first
+        assert "late-skill" not in first
+
+        late_dir = tmp_path / "skills" / "ops" / "late-skill"
+        late_dir.mkdir()
+        (late_dir / "SKILL.md").write_text(
+            "---\nname: late-skill\ndescription: Late skill.\n---\n"
+        )
+
+        second = build_skills_system_prompt()
+        assert "first-skill" in second
+        assert "late-skill" in second
+
 
 # =========================================================================
 # Context files prompt builder
@@ -1018,5 +1042,4 @@ class TestParallelToolCallGuidance:
 # =========================================================================
 # Budget warning history stripping
 # =========================================================================
-
 
