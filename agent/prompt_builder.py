@@ -1617,6 +1617,26 @@ def build_skills_system_prompt(
     # produce distinct cache entries (gateway serves multiple platforms).
     _platform_hint = _current_session_platform_hint()
     disabled = get_disabled_skill_names(_platform_hint or None)
+    # A Desktop/gateway backend can stay alive across direct skill restores,
+    # syncs, or operator edits that do not pass through skill_manage() and
+    # therefore cannot call clear_skills_system_prompt_cache(). Include the
+    # cheap metadata manifest in the L1 key so each new session observes the
+    # current skill tree instead of inheriting a stale in-process index.
+    # External skill directories need the same treatment because their files
+    # are also folded into the cached result below.
+    manifest_signature = tuple(
+        (
+            str(directory),
+            tuple(
+                sorted(
+                    (name, tuple(metadata))
+                    for name, metadata in _build_skills_manifest(directory).items()
+                )
+            ),
+        )
+        for directory in (skills_dir, *external_dirs)
+        if directory.exists()
+    )
     cache_key = (
         str(skills_dir),
         tuple(str(d) for d in external_dirs),
@@ -1625,6 +1645,7 @@ def build_skills_system_prompt(
         _platform_hint,
         tuple(sorted(disabled)),
         tuple(sorted(compact_categories or ())),
+        manifest_signature,
     )
     with _SKILLS_PROMPT_CACHE_LOCK:
         cached = _SKILLS_PROMPT_CACHE.get(cache_key)

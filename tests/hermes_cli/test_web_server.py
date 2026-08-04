@@ -434,6 +434,45 @@ class TestWebServerEndpoints:
             healed.close()
         assert missing_column in columns
 
+    def test_get_session_detail_heals_missing_system_prompts_table(self):
+        import sqlite3
+
+        from hermes_constants import get_hermes_home
+        from hermes_state import SessionDB
+
+        db_path = get_hermes_home() / "state.db"
+        seed = SessionDB(db_path=db_path)
+        try:
+            seed.create_session(
+                "stale-prompt-schema",
+                source="cli",
+                system_prompt="profile prompt",
+            )
+        finally:
+            seed.close()
+
+        legacy = sqlite3.connect(str(db_path))
+        try:
+            legacy.execute("DROP TABLE system_prompts")
+            legacy.execute("UPDATE schema_version SET version = version - 1")
+            legacy.commit()
+        finally:
+            legacy.close()
+
+        response = self.client.get("/api/sessions/stale-prompt-schema")
+
+        assert response.status_code == 200
+        assert response.json()["id"] == "stale-prompt-schema"
+        healed = sqlite3.connect(str(db_path))
+        try:
+            table = healed.execute(
+                "SELECT name FROM sqlite_master "
+                "WHERE type = 'table' AND name = 'system_prompts'"
+            ).fetchone()
+        finally:
+            healed.close()
+        assert table == ("system_prompts",)
+
     def test_get_sessions_zero_byte_store_returns_empty_list(self):
         from hermes_constants import get_hermes_home
 
