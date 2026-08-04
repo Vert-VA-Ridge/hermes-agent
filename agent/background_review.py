@@ -469,6 +469,12 @@ _MEMORY_REVIEW_PROMPT = (
     "preferences, or personal details worth remembering?\n"
     "2. Has the user expressed expectations about how you should behave, their work "
     "style, or ways they want you to operate?\n\n"
+    "Before adding, inspect the current memory entries returned by the memory tool. "
+    "If the new durable fact supersedes or duplicates an existing entry, use one "
+    "atomic batch to replace or remove the stale entry and add the new fact. Never "
+    "remove an entry merely because it is old; require clear contradiction, "
+    "supersession, or duplication evidence from the conversation. Replaced and "
+    "removed entries are written to the recoverable profile memory archive. "
     "If something stands out, save it using the memory tool. "
     "If nothing is worth saving, just say 'Nothing to save.' and stop."
 )

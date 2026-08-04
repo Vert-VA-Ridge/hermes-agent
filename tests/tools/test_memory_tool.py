@@ -150,6 +150,10 @@ class TestMemoryStoreReplace:
         assert result["success"] is True
         assert "Python 3.12 project" in store.memory_entries
         assert "Python 3.11 project" not in store.memory_entries
+        archive = store._path_for("memory").parent / "archive" / "MEMORY.jsonl"
+        records = [json.loads(line) for line in archive.read_text().splitlines()]
+        assert records[-1]["action"] == "replace"
+        assert records[-1]["entries"] == ["Python 3.11 project"]
 
 
     def test_replace_ambiguous_match(self, store):
@@ -171,6 +175,21 @@ class TestMemoryStoreRemove:
         result = store.remove("memory", "temporary")
         assert result["success"] is True
         assert len(store.memory_entries) == 0
+        archive = store._path_for("memory").parent / "archive" / "MEMORY.jsonl"
+        records = [json.loads(line) for line in archive.read_text().splitlines()]
+        assert records[-1]["action"] == "remove"
+        assert records[-1]["entries"] == ["temporary note"]
+
+    def test_archive_failure_leaves_active_memory_unchanged(self, store, monkeypatch):
+        store.add("memory", "keep on archive failure")
+        monkeypatch.setattr(
+            store,
+            "_archive_entries",
+            lambda *args, **kwargs: "archive unavailable",
+        )
+        result = store.remove("memory", "archive failure")
+        assert result == {"success": False, "error": "archive unavailable"}
+        assert store.memory_entries == ["keep on archive failure"]
 
     def test_remove_no_match_and_empty_old_text(self, store):
         store.add("memory", "fact A")
