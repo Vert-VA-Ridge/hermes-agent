@@ -2840,7 +2840,14 @@ class TestHandleMaxIterations:
                 "tool_calls": [{"id": "call_1", "function": {"name": "execute_code", "arguments": "{}"}}],
                 "codex_reasoning_items": [{"id": "rs_1"}],
             },
-            {"role": "tool", "tool_call_id": "call_1", "content": "result", "tool_name": "execute_code"},
+            {
+                "role": "tool",
+                "tool_call_id": "call_1",
+                "content": "result",
+                "tool_name": "execute_code",
+                "display_kind": "hidden",
+                "display_metadata": {"source": "desktop"},
+            },
             {"role": "assistant", "content": "Done.", "_empty_recovery_synthetic": True},
         ]
 
@@ -2852,9 +2859,13 @@ class TestHandleMaxIterations:
             assert "tool_name" not in m, m
             assert "codex_reasoning_items" not in m, m
             assert "codex_message_items" not in m, m
+            assert "display_kind" not in m, m
+            assert "display_metadata" not in m, m
             assert not any(isinstance(k, str) and k.startswith("_") for k in m), m
         # Internal history is untouched — the path copies each message.
         assert messages[2]["tool_name"] == "execute_code"
+        assert messages[2]["display_kind"] == "hidden"
+        assert messages[2]["display_metadata"] == {"source": "desktop"}
         assert messages[1]["codex_reasoning_items"] == [{"id": "rs_1"}]
 
 
