@@ -1204,10 +1204,20 @@ export function ContribWiring({ children }: { children: ReactNode }) {
               void refreshCurrentModel()
               void queryClient.invalidateQueries({ queryKey: ['model-options'] })
             }}
-            onMainModelChanged={(provider, model) => {
+            onMainModelChanged={async (provider, model) => {
+              // Settings owns the profile default. Apply that same choice to
+              // the active profile session as well: selectModel uses the
+              // gateway's validated, deferred-safe `config.set` path, which
+              // preserves the profile's fallback and auxiliary routes.
+              const switched = await selectModel({ provider, model })
+
+              if (!switched) {
+                throw new Error('The profile default was saved, but Hermes could not switch the active conversation.')
+              }
+
               applySavedMainModel(provider, model)
-              void refreshCurrentModel()
-              void queryClient.invalidateQueries({ queryKey: ['model-options'] })
+              await refreshCurrentModel()
+              await queryClient.invalidateQueries({ queryKey: ['model-options'] })
             }}
           />
         </Suspense>

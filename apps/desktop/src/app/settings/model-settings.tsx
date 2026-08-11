@@ -180,8 +180,9 @@ function StaleAuxWarning({ applying, onReset, slots, taskLabel }: StaleAuxWarnin
 }
 
 interface ModelSettingsProps {
-  /** Notified after the main model is applied, so live UI stores can sync. */
-  onMainModelChanged?: (provider: string, model: string) => void
+  /** Notified after the active profile default is saved. The Desktop wiring
+   * hot-swaps the current session before this screen reports success. */
+  onMainModelChanged?: (provider: string, model: string) => void | Promise<void>
   /** Shared settings "Applies to" scope: a concrete profile to edit instead of
    *  the app's active one, or undefined to follow the active profile (default).
    *  Request-shaped on purpose — the API helpers treat `null` as "deliberately
@@ -668,7 +669,7 @@ export function ModelSettings({ onMainModelChanged, scopeProfile }: ModelSetting
       // Live UI stores mirror the ACTIVE profile's model; a scoped apply
       // changed a different profile and must not repaint them.
       if (scopeProfile == null) {
-        onMainModelChanged?.(provider, model)
+        await onMainModelChanged?.(provider, model)
       }
 
       await refresh()
