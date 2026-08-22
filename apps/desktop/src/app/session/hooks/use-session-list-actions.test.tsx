@@ -479,6 +479,7 @@ describe('refreshSessions batches slices into one request', () => {
         messagingExclude: expect.arrayContaining(['cron'])
       })
     )
+    expect(listSidebarSessions.mock.calls[0]?.[0].recentsExclude).not.toContain('kanban')
   })
 
   it('does not start a refresh callback captured before a profile switch', async () => {
